@@ -43,7 +43,7 @@ manager = ConnectionManager()
 async def add_hello():
     e.start()
     job = slow_hello_world()
-    e.add_job(job, listener)
+    e.add_job(job)
     return {"job_id": job.id}
 
 
