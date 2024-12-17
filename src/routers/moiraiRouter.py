@@ -1,41 +1,66 @@
 import asyncio
+from collections import deque
+from time import sleep
 from fastapi.routing import APIRouter
 from fastapi.websockets import WebSocketDisconnect, WebSocket, WebSocketState
-from services.scrapy import Spider
 from moirai_engine.core.engine import Engine
 from moirai_engine.utils.samples import hello_world, slow_hello_world
 
 app = APIRouter(prefix="/moirai", tags=["Moirai"])
 
 
-async def listener(event):
+def listener(event):
     print(event)
 
 
 e = Engine(listener=listener)
 
 
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: dict[str, list[WebSocket]] = {}
+
+    async def connect(self, job_id: str, websocket: WebSocket):
+        await websocket.accept()
+        if job_id not in self.active_connections.keys():
+            self.active_connections[job_id] = []
+        connections = self.active_connections[job_id]
+        connections.append(websocket)
+
+    def disconnect(self, job_id: str, websocket: WebSocket):
+        connections = self.active_connections.get(job_id, [])
+        connections.remove(websocket)
+
+    async def broadcast(self, job_id: str, message: str):
+        for connection in self.active_connections.get(job_id, []):
+            await connection.send_text(message)
+
+
+manager = ConnectionManager()
+
+
 @app.get("/hello")
 async def add_hello():
-    await e.start()
+    e.start()
     job = slow_hello_world()
-    await e.add_job(job, listener)
+    e.add_job(job, listener)
     return {"job_id": job.id}
 
 
 @app.websocket("/{job_id}")
 async def notifications(websocket: WebSocket, job_id: str):
-    async def listener(event):
-        if websocket.client_state == WebSocketState.DISCONNECTED:
-            # await e.remove_listener(job_id, listener=listener)
-            return
-        await websocket.send_text(event)
 
-    await websocket.accept()
-    e.add_listener(listener=listener, job_id=job_id)
+    await manager.connect(job_id=job_id, websocket=websocket)
     try:
-        while True:
-            await asyncio.sleep(1)
+        e.add_listener(
+            listener=lambda x: asyncio.run(manager.broadcast(job_id, x)), job_id=job_id
+        )
+        for x in e.get_notification_history(job_id):
+            await manager.broadcast(job_id, x)
+
+        keepGoing = True
+        while keepGoing:
+            data = await websocket.receive_text()
+            await manager.broadcast(job_id, "[CLIENT] " + str(data))
     except WebSocketDisconnect:
-        ...
-        # await e.remove_listener(job_id, listener=listener)
+        manager.disconnect(job_id, websocket)
