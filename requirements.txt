@@ -18,7 +18,7 @@ mdurl==0.1.2
 moirai-engine @ file:///Users/fcrozetta/projects/moirai/dist/moirai_engine-0.0.22-py3-none-any.whl#sha256=bf84fadd3b0d16a9de4496b4d3b7a778d34455017ac1304a6c0aba807fca053e
 pydantic==2.10.3
 pydantic_core==2.27.1
-Pygments==2.18.0
+Pygments==2.20.0
 python-dotenv==1.0.1
 python-multipart==0.0.19
 PyYAML==6.0.2
